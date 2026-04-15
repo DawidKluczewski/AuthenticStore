@@ -1,25 +1,15 @@
 import { db } from "../firebase";
 import { collection, addDoc } from "firebase/firestore";
-import "./App.css";
+import Navbar from "./components/Navbar";
+import Baner from "./components/Baner";
 
 function App() {
-  const testFirestore = async () => {
-    try {
-      const docRef = await addDoc(collection(db, "testy"), {
-        wiadomosc: "Działa! Pozdro mordko!",
-        data: new Date(),
-      });
-      console.log("Dokument zapisany z ID: ", docRef.id);
-      alert("Dane wysłane do Firestore!");
-    } catch (e) {
-      console.error("Błąd zapisu: ", e);
-    }
-  };
-
   return (
-    <div className="App">
-      <h1>AuthenticStore test Firestore</h1>
-      <button onClick={testFirestore}>Wyślij coś do bazy</button>
+    <div className="h-[2400px]">
+      <nav className="sticky top-0 z-50 bg-white shadow-sm">
+        <Navbar />
+      </nav>
+      <Baner />
     </div>
   );
 }
