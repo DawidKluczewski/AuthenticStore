@@ -9,6 +9,7 @@ import Baner from "./components/Baner";
 import MarketPage from "./components/MarketPage";
 import About from "./components/About";
 import Faq from "./components/Faq";
+import AddOffer from "./components/AddOffer.jsx";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -28,13 +29,13 @@ function App() {
     <Router>
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Navbar user={user} />
-        <main className="flex-grow">
+        <main className="grow">
           <Routes>
             <Route path="/" element={user ? <MarketPage /> : <Baner />} />
             <Route path="/login" element={user ? <Navigate to="/" /> : <AuthPage />} />
             <Route path="/about" element={<About />} />
             <Route path="/faq" element={<Faq />} />
-            <Route path="/add-post" element={user ? <div className="p-20 text-center">Tu będzie formularz dodawania</div> : <Navigate to="/login" />} />
+            <Route path="/add-post" element={user ? <AddOffer /> : <Navigate to="/login" />} />
           </Routes>
         </main>
       </div>
