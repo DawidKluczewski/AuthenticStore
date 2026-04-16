@@ -1,36 +1,54 @@
 import logo from "../assets/logo.png";
-import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { auth } from "../firebase.js";
+import { signOut } from "firebase/auth";
 
-const Navbar = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+const Navbar = ({ user }) => {
+  const navigate = useNavigate();
+
+  const handleProtectedAction = (target) => {
+    if (user) {
+      navigate(target);
+    } else {
+      navigate("/login");
+    }
+  };
+
   return (
-    <div className="py-1 px-8 gap-2 flex  items-center w-full">
-      <div className="flex w-1/3 justify-center ">
-        <img src={logo} alt="Logo" className="h-20 cursor-pointer" />
+    <div className="py-1 px-8 gap-2 flex items-center w-full bg-white shadow-sm">
+      <div className="flex w-1/3 justify-center">
+        <Link to="/">
+          <img src={logo} alt="Logo" className="h-20 cursor-pointer" />
+        </Link>
       </div>
 
-      <div className="flex gap-6 font-bold w-1/3 justify-center text-md">
-        <a href="">Kupuj</a>
-        <a href="">O Nas</a>
-        <a href="">FAQ</a>
+      <div className="flex gap-6 font-bold w-1/3 justify-center text-md text-blue-950">
+        <button onClick={() => handleProtectedAction("/")} className="cursor-pointer hover:text-sky-600">
+          Kupuj
+        </button>
+        <Link to="/about" className="hover:text-sky-600">O Nas</Link>
+        <Link to="/faq" className="hover:text-sky-600">FAQ</Link>
       </div>
 
-      <div className="flex gap-6  w-1/3 justify-center items-center text-md">
-        <button className="mr-12 bg-blue-950 border-b-4 border-r-3  border-sky-600 rounded-lg px-4 py-2 text-white font-bold cursor-pointer hover:text-black hover:bg-blue-700 transition duration-200 hover:border-blue-900 ">
+      <div className="flex gap-6 w-1/3 justify-center items-center text-md">
+        <button 
+          onClick={() => handleProtectedAction("/add-post")} 
+          className="mr-12 bg-blue-950 border-b-4 border-r-3 border-sky-600 rounded-lg px-4 py-2 text-white font-bold cursor-pointer hover:bg-blue-700 transition duration-200"
+        >
           Dodaj Ogłoszenie
         </button>
 
-        {isLoggedIn ? (
-          <div className="flex gap-6">
-            <button className="flex w-12 h-12 cursor-pointer text-white items-center justify-center bg-black rounded-full">
-              A
-            </button>
-          </div>
+        {user ? (
+          <button 
+            onClick={() => signOut(auth)}
+            className="flex w-12 h-12 cursor-pointer text-white items-center justify-center bg-blue-950 rounded-full font-bold uppercase hover:bg-gray-800 transition duration-200 border-none outline-none"
+          >
+            {user.email.charAt(0)}
+          </button>
         ) : (
-          <div className="flex gap-6 font-black">
-            <button className="flex items-center justify-center cursor-pointer">Zaloguj</button>
-
-          </div>
+          <Link to="/login" className="font-black text-blue-950 hover:text-sky-600">
+            Zaloguj
+          </Link>
         )}
       </div>
     </div>
