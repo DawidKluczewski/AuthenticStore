@@ -15,7 +15,7 @@ const Navbar = ({ user }) => {
   };
 
   return (
-    <div className="py-1 px-8 gap-2 flex items-center w-full bg-white shadow-sm">
+    <div className="py-1 px-8 gap-2 flex items-center w-full bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
       <div className="flex w-1/3 justify-center">
         <Link to="/">
           <img src={logo} alt="Logo" className="h-20 cursor-pointer" />
