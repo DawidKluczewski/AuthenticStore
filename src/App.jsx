@@ -10,6 +10,7 @@ import MarketPage from "./components/MarketPage";
 import About from "./components/About";
 import Faq from "./components/Faq";
 import AddOffer from "./components/AddOffer.jsx";
+import ProductDetails from "./components/ProductDetails";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -36,6 +37,7 @@ function App() {
             <Route path="/about" element={<About />} />
             <Route path="/faq" element={<Faq />} />
             <Route path="/add-post" element={user ? <AddOffer /> : <Navigate to="/login" />} />
+            <Route path="/product/:id" element={<ProductDetails />} />
           </Routes>
         </main>
       </div>
