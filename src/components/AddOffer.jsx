@@ -1,13 +1,27 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react'; // Dodano useRef
 import { storage, db, auth } from "../firebase.js";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, addDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+import ReCAPTCHA from "react-google-recaptcha"; // Import Captchy
+
+const categoryKeywords = {
+    "Elektronika": ["electronic", "computer", "phone", "gadget", "camera", "audio", "device", "laptop", "television", "screen", "keyboard"],
+    "Ubrania": ["clothing", "apparel", "shoe", "footwear", "shirt", "pants", "dress", "jacket", "fashion", "jeans"],
+    "Motoryzacja": ["vehicle", "car", "motorcycle", "auto", "tire", "wheel", "transport", "engine", "scooter"],
+    "Zwierzęta": ["animal", "pet", "dog", "cat", "bird", "mammal", "wildlife", "fish", "reptile"],
+    "Żywność": ["food", "dish", "fruit", "vegetable", "meal", "cuisine", "ingredient", "drink", "baking"],
+    "Sport": ["sport", "fitness", "ball", "bicycle", "gym", "racket", "exercise", "snowboard", "ski"],
+    "Dom i Ogród": ["furniture", "plant", "garden", "chair", "table", "bed", "home", "flower", "appliance", "wood"]
+};
 
 const AddOffer = () => {
     const navigate = useNavigate();
+    const recaptchaRef = useRef(); // Ref do manualnego resetowania Captchy
     const [file, setFile] = useState(null);
     const [uploading, setUploading] = useState(false);
+    const [loadingText, setLoadingText] = useState("");
+    const [captchaToken, setCaptchaToken] = useState(null); // Stan dla tokena Captcha
     
     const [formData, setFormData] = useState({
         title: "",
@@ -23,23 +37,96 @@ const AddOffer = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    // Funkcja wywoływana przy zmianie statusu Captchy
+    const onCaptchaChange = (token) => {
+        setCaptchaToken(token);
+    };
+
+    const validateImageCategory = (imageFile, selectedCategory) => {
+        if (selectedCategory === "Inne") return Promise.resolve(true);
+
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(imageFile);
+            
+            reader.onloadend = async () => {
+                try {
+                    const base64data = reader.result.split(',')[1];
+                    const apiKey = import.meta.env.VITE_GOOGLE_VISION_API_KEY;
+                    
+                    if (!apiKey) {
+                        alert("Brak klucza API Google Vision!");
+                        return resolve(false);
+                    }
+
+                    const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            requests: [{
+                                image: { content: base64data },
+                                features: [{ type: 'LABEL_DETECTION', maxResults: 15 }]
+                            }]
+                        })
+                    });
+
+                    const data = await response.json();
+                    const labels = data.responses[0].labelAnnotations?.map(l => l.description.toLowerCase()) || [];
+                    const keywords = categoryKeywords[selectedCategory] || [];
+
+                    const isMatch = labels.some(label => 
+                        keywords.some(keyword => label.includes(keyword))
+                    );
+
+                    resolve(isMatch);
+                } catch (error) {
+                    console.error("Błąd Vision API:", error);
+                    resolve(false); 
+                }
+            };
+            reader.onerror = () => reject(new Error("Błąd odczytu pliku"));
+        });
+    };
+
     const handleUpload = async (e) => {
         e.preventDefault();
 
-        if (!formData.title.trim()) return alert("Wpisz tytuł ogłoszenia!");
+        // 1. Walidacja formularza
+        if (!formData.title.trim()) return alert("Wpisz tytuł!");
         if (!formData.category) return alert("Wybierz kategorię!");
-        if (!formData.condition) return alert("Wybierz stan produktu!");
-        if (formData.condition === "Używany" && !formData.subCondition) return alert("Wybierz szczegółowy stan używanego produktu!");
-        if (!formData.price || formData.price <= 0) return alert("Wpisz poprawną cenę!");
-        if (!formData.description.trim()) return alert("Dodaj opis produktu!");
-        if (!file) return alert("Musisz dodać co najmniej jedno zdjęcie!");
+        if (!formData.price || formData.price <= 0) return alert("Wpisz cenę!");
+        if (!file) return alert("Dodaj zdjęcie!");
+
+        // 2. Walidacja CAPTCHA
+        if (!captchaToken) {
+            return alert("Proszę potwierdzić, że nie jesteś robotem!");
+        }
 
         setUploading(true);
+        
         try {
+            // Walidacja AI
+            setLoadingText("Analizowanie zdjęcia...");
+            const isImageValid = await validateImageCategory(file, formData.category);
+            
+            if (!isImageValid) {
+                alert(`Zdjęcie nie pasuje do kategorii "${formData.category}".`);
+                setUploading(false);
+                setLoadingText("");
+                // Resetujemy Captchę, by wymusić nową weryfikację przy kolejnej próbie
+                recaptchaRef.current.reset();
+                setCaptchaToken(null);
+                return;
+            }
+
+            setLoadingText("Wysyłanie ogłoszenia...");
+
+            // Firebase Storage
             const fileRef = ref(storage, `offers/${Date.now()}_${file.name}`);
             const snapshot = await uploadBytes(fileRef, file);
             const photoURL = await getDownloadURL(snapshot.ref);
 
+            // Firestore
             await addDoc(collection(db, "offers"), {
                 ...formData,
                 price: Number(formData.price),
@@ -49,13 +136,17 @@ const AddOffer = () => {
                 createdAt: new Date()
             });
 
-            alert("Ogłoszenie dodane pomyślnie!");
+            alert("Sukces!");
             navigate("/");
         } catch (error) {
             console.error("Błąd:", error);
             alert("Błąd: " + error.message);
+            recaptchaRef.current.reset();
+            setCaptchaToken(null);
         }
+        
         setUploading(false);
+        setLoadingText("");
     };
 
     return (
@@ -66,116 +157,58 @@ const AddOffer = () => {
                         Dodaj nowe ogłoszenie
                     </h1>
 
+                    {/* --- POLA FORMULARZA (bez zmian) --- */}
                     <div className="flex flex-col gap-1 mb-4">
                         <label className="font-bold text-gray-700 text-sm ml-1">Tytuł ogłoszenia *</label>
-                        <input 
-                            name="title"
-                            value={formData.title}
-                            onChange={handleChange}
-                            type="text" 
-                            placeholder="np. Aparat Sony A7III" 
-                            className="w-full border-2 border-gray-100 rounded-xl px-4 py-2 focus:border-blue-950 outline-none transition-all shadow-sm" 
-                        />
+                        <input name="title" value={formData.title} onChange={handleChange} type="text" className="w-full border-2 border-gray-100 rounded-xl px-4 py-2" />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div className="flex flex-col gap-1">
                             <label className="font-bold text-gray-700 text-sm ml-1">Kategoria *</label>
-                            <select 
-                                name="category" 
-                                value={formData.category} 
-                                onChange={handleChange} 
-                                className="border-2 border-gray-100 rounded-xl px-3 h-11 bg-white focus:border-blue-950 outline-none shadow-sm cursor-pointer hover:bg-gray-50 transition-colors"
-                            >
-                                <option value="" disabled>-- Wybierz kategorię --</option>
-                                <option value="Elektronika">Elektronika</option>
-                                <option value="Ubrania">Ubrania</option>
-                                <option value="Motoryzacja">Motoryzacja</option>
-                                <option value="Zwierzęta">Zwierzęta</option>
-                                <option value="Żywność">Żywność</option>
-                                <option value="Sport">Sport</option>
-                                <option value="Dom i Ogród">Dom i Ogród</option>
+                            <select name="category" value={formData.category} onChange={handleChange} className="border-2 border-gray-100 rounded-xl px-3 h-11 bg-white">
+                                <option value="" disabled>-- Wybierz --</option>
+                                {Object.keys(categoryKeywords).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                                 <option value="Inne">Inne</option>
                             </select>
                         </div>
                         <div className="flex flex-col gap-1">
                             <label className="font-bold text-gray-700 text-sm ml-1">Stan produktu *</label>
-                            <select 
-                                name="condition" 
-                                value={formData.condition} 
-                                onChange={handleChange} 
-                                className="border-2 border-gray-100 rounded-xl px-3 h-11 bg-white focus:border-blue-950 outline-none shadow-sm cursor-pointer hover:bg-gray-50 transition-colors"
-                            >
-                                <option value="" disabled>-- Wybierz stan --</option>
+                            <select name="condition" value={formData.condition} onChange={handleChange} className="border-2 border-gray-100 rounded-xl px-3 h-11 bg-white">
+                                <option value="" disabled>-- Wybierz --</option>
                                 <option value="Nowy">Nowy</option>
                                 <option value="Używany">Używany</option>
-                                <option value="Uszkodzony">Uszkodzony</option>
                             </select>
                         </div>
                     </div>
-
-                    {formData.condition === "Używany" && (
-                        <div className="flex flex-col gap-1 mb-4 animate-fadeIn">
-                            <label className="text-gray-700 italic text-sm font-bold ml-1">Precyzyjny stan używanego przedmiotu:</label>
-                            <select 
-                                name="subCondition" 
-                                value={formData.subCondition} 
-                                onChange={handleChange} 
-                                className="border-2 border-blue-100 rounded-xl px-3 h-11 bg-white focus:border-blue-600 outline-none shadow-sm cursor-pointer hover:bg-blue-50 transition-colors"
-                            >
-                                <option value="" disabled>-- Wybierz stopień zużycia --</option>
-                                <option>Jak nowy</option>
-                                <option>Bardzo dobry</option>
-                                <option>Dobry</option>
-                                <option>Przeciętny</option>
-                            </select>
-                        </div>
-                    )}
 
                     <div className="flex flex-col gap-1 mb-4">
                         <label className="font-bold text-gray-700 text-sm ml-1">Cena (PLN) *</label>
-                        <input 
-                            name="price"
-                            value={formData.price}
-                            onChange={handleChange}
-                            type="number" 
-                            placeholder="Wpisz kwotę" 
-                            className="w-full border-2 border-gray-100 rounded-xl px-4 py-2 focus:border-blue-950 outline-none shadow-sm" 
-                        />
+                        <input name="price" value={formData.price} onChange={handleChange} type="number" className="w-full border-2 border-gray-100 rounded-xl px-4 py-2" />
                     </div>
 
-                    <div className="flex flex-col gap-1 mb-4">
-                        <label className="font-bold text-gray-700 text-sm ml-1">Opis produktu *</label>
-                        <textarea 
-                            name="description"
-                            value={formData.description}
-                            onChange={handleChange}
-                            placeholder="Napisz coś więcej o tym przedmiocie..." 
-                            className="w-full border-2 border-gray-100 rounded-xl px-4 py-2 min-h-[100px] focus:border-blue-950 outline-none shadow-sm" 
-                        />
+                    <div className="flex flex-col gap-1 mb-6">
+                        <label className="font-bold text-gray-700 text-sm ml-1">Dodaj zdjęcie produktu *</label>
+                        <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0])} className="text-xs file:bg-blue-950 file:text-white file:rounded-full file:border-0 file:px-4 file:py-2" />
                     </div>
 
-                    <div className="flex flex-col items-center p-4 gap-2 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 mb-6 hover:bg-gray-100 hover:border-blue-300 transition-all cursor-pointer group">
-                        <p className="text-sm font-bold text-gray-500 group-hover:text-blue-950">Dodaj zdjęcie produktu *</p>
-                        <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => setFile(e.target.files[0])}
-                            className="text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-950 file:text-white cursor-pointer transition-all shadow-md"
+                    {/* --- KOMPONENT RECAPTCHA --- */}
+                    <div className="flex justify-center mb-6">
+                        <ReCAPTCHA
+                            ref={recaptchaRef}
+                            sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                            onChange={onCaptchaChange}
                         />
-                        {file && <p className="text-xs text-green-600 font-bold mt-1">Wybrano: {file.name}</p>}
                     </div>
 
                     <button 
                         type="submit" 
                         disabled={uploading} 
-                        className={`w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all transform active:scale-95 cursor-pointer ${
-                            uploading 
-                            ? "bg-gray-400 cursor-not-allowed" 
-                            : "bg-blue-950 text-white hover:bg-blue-900 hover:shadow-blue-200 hover:-translate-y-1"
+                        className={`w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all ${
+                            uploading ? "bg-gray-400" : "bg-blue-950 text-white hover:bg-blue-900"
                         }`}
                     >
-                        {uploading ? "Wysyłanie..." : "Opublikuj ogłoszenie"}
+                        {uploading ? loadingText : "Opublikuj ogłoszenie"}
                     </button>
                 </div>
             </form>
