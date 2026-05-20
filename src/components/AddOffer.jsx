@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react'; // Dodano useRef
+import { useState, useRef } from 'react'; 
 import { storage, db, auth } from "../firebase.js";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, addDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import ReCAPTCHA from "react-google-recaptcha"; // Import Captchy
+import ReCAPTCHA from "react-google-recaptcha"; 
 
 const categoryKeywords = {
     "Elektronika": ["electronic", "computer", "phone", "gadget", "camera", "audio", "device", "laptop", "television", "screen", "keyboard"],
@@ -17,11 +17,11 @@ const categoryKeywords = {
 
 const AddOffer = () => {
     const navigate = useNavigate();
-    const recaptchaRef = useRef(); // Ref do manualnego resetowania Captchy
+    const recaptchaRef = useRef(); 
     const [file, setFile] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [loadingText, setLoadingText] = useState("");
-    const [captchaToken, setCaptchaToken] = useState(null); // Stan dla tokena Captcha
+    const [captchaToken, setCaptchaToken] = useState(null); 
     
     const [formData, setFormData] = useState({
         title: "",
@@ -37,7 +37,6 @@ const AddOffer = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    // Funkcja wywoływana przy zmianie statusu Captchy
     const onCaptchaChange = (token) => {
         setCaptchaToken(token);
     };
@@ -91,13 +90,13 @@ const AddOffer = () => {
     const handleUpload = async (e) => {
         e.preventDefault();
 
-        // 1. Walidacja formularza
         if (!formData.title.trim()) return alert("Wpisz tytuł!");
         if (!formData.category) return alert("Wybierz kategorię!");
+        if (!formData.condition) return alert("Wybierz stan produktu!");
+        if (formData.condition === "Używany" && !formData.subCondition) return alert("Wybierz szczegółowy stan produktu!");
         if (!formData.price || formData.price <= 0) return alert("Wpisz cenę!");
         if (!file) return alert("Dodaj zdjęcie!");
 
-        // 2. Walidacja CAPTCHA
         if (!captchaToken) {
             return alert("Proszę potwierdzić, że nie jesteś robotem!");
         }
@@ -105,7 +104,6 @@ const AddOffer = () => {
         setUploading(true);
         
         try {
-            // Walidacja AI
             setLoadingText("Analizowanie zdjęcia...");
             const isImageValid = await validateImageCategory(file, formData.category);
             
@@ -120,12 +118,10 @@ const AddOffer = () => {
 
             setLoadingText("Wysyłanie ogłoszenia...");
 
-            // Firebase Storage
             const fileRef = ref(storage, `offers/${Date.now()}_${file.name}`);
             const snapshot = await uploadBytes(fileRef, file);
             const photoURL = await getDownloadURL(snapshot.ref);
 
-            // Firestore
             await addDoc(collection(db, "offers"), {
                 ...formData,
                 price: Number(formData.price),
@@ -135,7 +131,6 @@ const AddOffer = () => {
                 createdAt: new Date()
             });
 
-            // 3. --- APPLICATION INTEGRATION (GOOGLE CLOUD) ---
             setLoadingText("Autoryzacja z Google Cloud...");
             try {
                 const CLIENT_EMAIL = "firebase-adminsdk-fbsvc@authentic-store-493314.iam.gserviceaccount.com";
@@ -144,7 +139,6 @@ const AddOffer = () => {
                 const PROJECT_ID = "authentic-store-493314"; 
                 const LOCATION = "europe-central2"; 
 
-                // Generowanie tokenu JWT (OAuth2)
                 const iat = Math.floor(Date.now() / 1000);
                 const exp = iat + 3600;
 
@@ -186,7 +180,6 @@ const AddOffer = () => {
 
                 const jwt = `${header}.${claimSet}.${signature}`;
 
-                // USUNIĘTE PROXY - Strzał bezpośredni
                 const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
                     method: "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -196,9 +189,7 @@ const AddOffer = () => {
                 const tokenData = await tokenResponse.json();
                 const accessToken = tokenData.access_token;
 
-                // Wywołanie oficjalnego punktu końcowego v1 execute w Warszawie
                 setLoadingText("Uruchamianie integracji GCP...");
-                // USUNIĘTE PROXY - Czysty URL do Warszawy
                 const gcpUrl = `https://integrations.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/integrations/-:execute`;
 
                 const response = await fetch(gcpUrl, {
@@ -208,12 +199,14 @@ const AddOffer = () => {
                         "Authorization": `Bearer ${accessToken}`
                     },
                     body: JSON.stringify({
-                        // To pole mapuje się na Wasz konkretny API Trigger widoczny na screenie 2!
                         triggerId: "api_trigger/marketplace-integration_API_1", 
                         inputParameters: {
                             "offer_title": { "stringValue": formData.title },
                             "offer_price": { "doubleValue": Number(formData.price) },
-                            "user_email": { "stringValue": auth.currentUser?.email || "anonymous" }
+                            "user_email": { "stringValue": auth.currentUser?.email || "anonymous" },
+                            "offer_description": { "stringValue": formData.description || "" },
+                            "offer_subcategory": { "stringValue": formData.category || "" },
+                            "offer_subcondition": { "stringValue": formData.subCondition || "" }
                         }
                     })
                 });
@@ -250,7 +243,6 @@ const AddOffer = () => {
                         Dodaj nowe ogłoszenie
                     </h1>
 
-                    {/* --- POLA FORMULARZA --- */}
                     <div className="flex flex-col gap-1 mb-4">
                         <label className="font-bold text-gray-700 text-sm ml-1">Tytuł ogłoszenia *</label>
                         <input name="title" value={formData.title} onChange={handleChange} type="text" className="w-full border-2 border-gray-100 rounded-xl px-4 py-2" />
@@ -275,6 +267,24 @@ const AddOffer = () => {
                         </div>
                     </div>
 
+                    {formData.condition === "Używany" && (
+                        <div className="flex flex-col gap-1 mb-4">
+                            <label className="font-bold text-gray-700 text-sm ml-1">Szczegółowy stan produktu *</label>
+                            <select name="subCondition" value={formData.subCondition} onChange={handleChange} className="border-2 border-gray-100 rounded-xl px-3 h-11 bg-white cursor-pointer">
+                                <option value="" disabled>-- Wybierz --</option>
+                                <option value="Idealny">Idealny</option>
+                                <option value="Bardzo dobry">Bardzo dobry</option>
+                                <option value="Dobry">Dobry</option>
+                                <option value="Dopuszczający">Dopuszczający</option>
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="flex flex-col gap-1 mb-4">
+                        <label className="font-bold text-gray-700 text-sm ml-1">Opis produktu</label>
+                        <textarea name="description" value={formData.description} onChange={handleChange} className="w-full border-2 border-gray-100 rounded-xl px-4 py-2 h-24 resize-none" />
+                    </div>
+
                     <div className="flex flex-col gap-1 mb-4">
                         <label className="font-bold text-gray-700 text-sm ml-1">Cena (PLN) *</label>
                         <input name="price" value={formData.price} onChange={handleChange} type="number" className="w-full border-2 border-gray-100 rounded-xl px-4 py-2" />
@@ -285,7 +295,6 @@ const AddOffer = () => {
                         <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0])} className="text-xs file:bg-blue-950 file:text-white file:rounded-full file:border-0 file:px-4 file:py-2 cursor-pointer" />
                     </div>
 
-                    {/* --- KOMPONENT RECAPTCHA --- */}
                     <div className="flex justify-center mb-6">
                         <ReCAPTCHA
                             ref={recaptchaRef}
