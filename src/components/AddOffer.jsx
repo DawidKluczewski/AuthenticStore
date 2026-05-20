@@ -222,7 +222,7 @@ const AddOffer = () => {
                     const errText = await response.text();
                     console.error("GCP Response Error Log:", errText);
                 } else {
-                    console.log("🔥 STRZAŁ ZAAKCEPTOWANY PRZEZ WARSZAWĘ! Sprawdźcie logi w GCC.");
+                    console.log("POŁĄCZENIE DZIAŁA");
                 }
 
             } catch (gcpError) {
