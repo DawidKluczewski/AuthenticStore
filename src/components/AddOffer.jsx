@@ -186,8 +186,8 @@ const AddOffer = () => {
 
                 const jwt = `${header}.${claimSet}.${signature}`;
 
-                // Pobranie oficjalnego Access Tokenu przez proxy
-                const tokenResponse = await fetch("https://corsproxy.io/?https://oauth2.googleapis.com/token", {
+                // USUNIĘTE PROXY - Strzał bezpośredni
+                const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
                     method: "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
@@ -198,7 +198,8 @@ const AddOffer = () => {
 
                 // Wywołanie oficjalnego punktu końcowego v1 execute w Warszawie
                 setLoadingText("Uruchamianie integracji GCP...");
-                const gcpUrl = `https://corsproxy.io/?https://integrations.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/integrations/-:execute`;
+                // USUNIĘTE PROXY - Czysty URL do Warszawy
+                const gcpUrl = `https://integrations.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/integrations/-:execute`;
 
                 const response = await fetch(gcpUrl, {
                     method: "POST",
